@@ -1,43 +1,97 @@
 use std::env;
 use std::fs::{self, ReadDir};
+use std::path::Path;
+use colored::Colorize;
 
 fn main() {
-    let paths = read_path();
+    let file_path = match get_path() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return;
+        }
+    };
 
-    if paths.is_err() {
-        println!("Error: {}", paths.unwrap_err());
+    if let Err(e) = list_dir(&file_path) {
+        eprintln!("Error: {}", e);
         return;
     }
 
-    let paths = paths.unwrap();
-
-    for path in paths {
-        println!("Name: {}", path.unwrap().path().display());
+    let problems = validate_unity_project(&file_path);
+    if problems.is_empty() {
+        println!("{}", "Valid Unity project.".green());
+    } else {
+        println!("{}", "Not a valid Unity project:".red());
+        for p in &problems {
+            println!("  - {}", p.yellow());
+        }
     }
 }
 
-fn read_path() -> Result<ReadDir, String> {
+fn get_path() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>{
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        return Err("No argument provided.".to_string());
+        return Err("No argument provided.".into());
+    }
+    if args[1].is_empty() {
+        return Err("Path is empty.".into());
     }
 
-    let file_path = &args[1];
-
-    if file_path.is_empty() {
-        return Err("Path is empty.".to_string());
+    let path = Path::new(&args[1]);
+    if !path.exists() {
+        return Err("Path does not exist.".into());
     }
 
-    if !std::path::Path::new(file_path).exists() {
-        return Err("Path does not exist.".to_string());
+    Ok(path.to_path_buf())
+}
+
+fn list_dir(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+
+    let entries: ReadDir = fs::read_dir(path)?;
+    for entry in entries {
+        match entry {
+            Ok(e) => println!("Name: {}", e.path().display()),
+            Err(e) => eprintln!("Error reading entry: {}", e),
+        }
     }
 
-    let paths = fs::read_dir(file_path);
+    Ok(())
+}
 
-    if paths.is_err() {
-        return Err("Could not read directory.".to_string());
+fn validate_unity_project(root: &Path) -> Vec<String> {
+    let mut problems = Vec::new();
+    if !root.is_dir() {
+        return vec!["Given path is not a directory".to_string()];
+    }
+    if !root.join("Assets").is_dir() {
+        problems.push("Missing Assets/ directory".to_string());
+    }
+    if !root.join("ProjectSettings").is_dir() {
+        problems.push("Missing ProjectSettings/ directory".to_string());
+    }
+    if !root.join("Packages").is_dir() {
+        problems.push("Missing Packages/ directory".to_string());
     }
 
-    Ok(paths.unwrap())
+    let project_version = root.join("ProjectSettings").join("ProjectVersion.txt");
+    if !project_version.is_file(){
+        problems.push("Missing ProjectSettings/ProjectVersion.txt".to_string());
+    }
+    let manifest = root.join("Packages").join("manifest.json");
+    if !manifest.is_file() {
+        problems.push("Missing Packages/manifest.json".to_string());
+    } else {
+        match fs::metadata(&manifest) {
+            Ok(meta) if meta.len() == 0 => {
+                problems.push("manifest.json is empty".to_string());
+            }
+            Err(e) => {
+                problems.push(format!("Could not read manifest.json metadata: {}", e));
+            }
+            _ => {}
+        }
+    }
+
+    problems
 }
