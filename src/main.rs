@@ -1,4 +1,5 @@
 use std::env;
+use std::fmt::format;
 use std::fs::{self, ReadDir};
 use std::path::Path;
 use colored::Colorize;
@@ -20,6 +21,12 @@ fn main() {
     let problems = validate_unity_project(&file_path);
     if problems.is_empty() {
         println!("{}", "Valid Unity project.".green());
+        if let Err(e) = generate_project_hierarchy(&file_path) {
+            eprintln!("Error: {}", e);
+            return;
+        }
+
+        println!("{}", "Project hierarchy generated.".green());
     } else {
         println!("{}", "Not a valid Unity project:".red());
         for p in &problems {
@@ -95,3 +102,15 @@ fn validate_unity_project(root: &Path) -> Vec<String> {
 
     problems
 }
+
+fn generate_project_hierarchy(path: &Path) -> Result<(), Box<dyn std::error::Error>>{
+
+    let asset_path = path.join("Assets");
+    let project_path = asset_path.join("_Project");
+    if let Err(e) = fs::create_dir(&project_path) {
+        return Err(format!("Failed to create _test directory: {}", e).into());
+    }
+
+    Ok(())
+}
+
