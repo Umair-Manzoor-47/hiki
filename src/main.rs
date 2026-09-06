@@ -1,8 +1,21 @@
 use std::env;
-use std::fmt::format;
 use std::fs::{self, ReadDir};
 use std::path::Path;
 use colored::Colorize;
+
+const HIERARCHY_ROOT: &str = "Assets";
+
+const PROJECT_DIRS: &[&str] = &[
+    "Plugins",
+    "Prefabs",
+    "Prefabs/DependencyInjection",
+    "Scenes",
+    "Scripts",
+    "Scripts/DependencyInjection",
+    "Scripts/Tools",
+    "Scripts/Tools/Extensions",
+    "Settings",
+];
 
 fn main() {
     let file_path = match get_path() {
@@ -21,9 +34,17 @@ fn main() {
     let problems = validate_unity_project(&file_path);
     if problems.is_empty() {
         println!("{}", "Valid Unity project.".green());
-        if let Err(e) = generate_project_hierarchy(&file_path) {
-            eprintln!("Error: {}", e);
-            return;
+        match generate_project_hierarchy(&file_path) {
+            Ok(created) => {
+                println!(
+                    "{}",
+                    format!("Project hierarchy generated ({} new).", created.len()).green()
+                );
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return;
+            }
         }
 
         println!("{}", "Project hierarchy generated.".green());
@@ -103,14 +124,29 @@ fn validate_unity_project(root: &Path) -> Vec<String> {
     problems
 }
 
-fn generate_project_hierarchy(path: &Path) -> Result<(), Box<dyn std::error::Error>>{
+fn generate_project_hierarchy(path: &Path) -> Result<Vec<std::path::PathBuf>, Box<dyn std::error::Error>> {
+    let base = path.join(HIERARCHY_ROOT);
+    let mut created: Vec<std::path::PathBuf> = Vec::new();
 
-    let asset_path = path.join("Assets");
-    let project_path = asset_path.join("_Project");
-    if let Err(e) = fs::create_dir(&project_path) {
-        return Err(format!("Failed to create _test directory: {}", e).into());
+    for rel in PROJECT_DIRS {
+        let target = base.join(rel);
+
+        if target.is_dir() {
+            println!("  {} {}", "=".dimmed(), rel.dimmed());
+            continue;
+        }
+
+        match fs::create_dir(&target) {
+            Ok(()) => {
+                println!("  {} {}", "+".green(), rel);
+                created.push(target);
+            }
+            Err(e) => {
+                return Err(format!("Failed to create {}: {}", target.display(), e).into());
+            }
+        }
     }
 
-    Ok(())
+    Ok(created)
 }
 
